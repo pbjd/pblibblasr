@@ -104,6 +104,8 @@ void ComputeAlignmentStats(T_Alignment &alignment, Nucleotide* qSeq, Nucleotide 
 template<typename T_Alignment>
 int ComputeDrift(T_Alignment &alignment); 
 
+int ComputeDrift(blasr::Block &cur, blasr::Block &next); 
+
 template<typename T_Alignment>
 void RemoveAlignmentPrefixGaps(T_Alignment &alignment); 
 

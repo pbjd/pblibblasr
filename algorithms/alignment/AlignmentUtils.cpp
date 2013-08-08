@@ -79,7 +79,7 @@ inline void PrintAlignmentStats(Alignment &alignment, std::ostream &out) {
     out << "     Score: " << alignment.score << std::endl; 
 }
 
-int ComputeDrift(Block &cur,  Block &next ) {
+int ComputeDrift(Block &cur, Block &next) {
 
     int tGap  = (next.tPos - cur.TEnd());
     int qGap = (next.qPos - cur.QEnd());

@@ -5,8 +5,10 @@ sources := $(wildcard algorithms/alignment/*.cpp) \
 		   $(wildcard datastructures/alignment/*.cpp) \
 		   $(wildcard datastructures/matrix/*.cpp) \
 		   $(wildcard datastructures/reads/*.cpp) \
+		   $(wildcard datastructures/anchoring/*.cpp) \
 		   $(wildcard qvs/*.cpp) \
 		   $(wildcard tuples/*.cpp) \
+		   $(wildcard utils/*.cpp) \
 		   $(wildcard *.cpp) \
 
 objects := $(sources:.cpp=.o)
