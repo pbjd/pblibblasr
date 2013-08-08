@@ -1,7 +1,3 @@
-#include <cstdlib>
-#include <string>
-#include <iostream>
-#include <fstream>
 #include "utils.hpp"
 
 template<typename t_file>
@@ -22,7 +18,7 @@ T_Int CeilOfFraction(T_Int num, T_Int denom) {
 }
 
 template<typename T>
-T*ProtectedNew(unsigned long size) {
+T* ProtectedNew(unsigned long size) {
     T* ptr;
     ptr = new T[size];
     if (ptr == NULL) {
@@ -31,3 +27,5 @@ T*ProtectedNew(unsigned long size) {
     }
     return ptr;
 }
+
+template unsigned char* ProtectedNew<unsigned char>(unsigned long size);

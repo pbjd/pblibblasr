@@ -11,7 +11,6 @@
 #include "DNASequence.hpp"
 #include "Enumerations.h"
 #include "ReverseCompressIndex.hpp"
-#include "FASTASequence.hpp"
 #include "FASTQSequence.hpp"
 #include "CompressedSequence.hpp"
 

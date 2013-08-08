@@ -1,67 +1,12 @@
-#ifndef _BLASR_GUIDE_ALIGNMENT_HPP_
-#define _BLASR_GUIDE_ALIGNMENT_HPP_
+#ifndef _BLASR_AFFINE_GUIDE_ALIGNMENT_HPP_
+#define _BLASR_AFFINE_GUIDE_ALIGNMENT_HPP_
 
-#include <vector>
-#include <cmath>
-#include <limits.h>
-#include <ostream>
-#include "Types.h"
-#include "defs.h"
-#include "NucConversion.hpp"
-#include "DNASequence.hpp"
-#include "sdp/SDPFragment.hpp"
-#include "datastructures/matrix/FlatMatrix.hpp"
-#include "datastructures/alignment/Alignment.hpp"
-#include "datastructures/anchoring/MatchPos.hpp"
-#include "datastructures/matrix/Matrix.hpp"
-#include "tuples/TupleList.hpp"
-#include "tuples/TupleMetrics.hpp"
-#include "tuples/DNATuple.hpp"
-#include "utils/LogUtils.hpp"
-#include "utils/PhredUtils.hpp"
-#include "qvs/QualityValue.hpp"
-#include "qvs/QualityValueVector.hpp"
-#include "AlignmentUtils.hpp"
-#include "DistanceMatrixScoreFunction.hpp"
-
-#define LOWEST_LOG_VALUE  -700
-
-class GuideRow {
-public:
-    int q, t;
-    int tPre, tPost;
-    unsigned int matrixOffset; // Where the center (q) is in the score
-    // and path matrices.
-    int GetRowLength(); 
-
-};
-
-typedef std::vector<GuideRow> Guide;
-
-class GetBufferIndexFunctor {
-// row + rowSeqOffset - 1 == seqRow
-// so, rowInSeq = -1, rowSeqOffset = 0 -> row = 0
-public:
-    int seqRowOffset;
-    int guideSize;
-    int operator()(Guide &guide, int seqRow, int seqCol, int &index); 
-};
-
-int ComputeMatrixNElem(Guide &guide);
-
-void StoreMatrixOffsets(Guide &guide); 
-
-float QVToLogPScale(char qv);
-
-void QVToLogPScale(QualityValueVector<QualityValue> &qualVect, int phredVectLength, std::vector<float> &lnVect); 
-
-int AlignmentToGuide(blasr::Alignment &alignment, Guide &guide, int bandSize); 
-
+#include "GuidedAlign.hpp"
 template<typename QSequence, typename TSequence, typename T_ScoreFn>
-int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &guideAlignment,
+int AffineGuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  Alignment &guideAlignment,
         T_ScoreFn &scoreFn,
         int bandSize,
-        blasr::Alignment &alignment,
+        Alignment &alignment,
         std::vector<int>    &scoreMat,
         std::vector<Arrow>  &pathMat,
         std::vector<double> &probMat,
@@ -76,7 +21,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     Guide guide;
     AlignmentToGuide(guideAlignment, guide, bandSize);
     StoreMatrixOffsets(guide);
-    ComputeMatrixNElem(guide);
+    int guideSize = ComputeMatrixNElem(guide);
 
     //
     // Make a copy of the sequences that is guaranteed to be in 3-bit format for faster alignment.
@@ -87,8 +32,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     qSeq.Assign(origQSeq);
     tSeq.Assign(origTSeq);
 
-    unsigned int matrixNElem = ComputeMatrixNElem(guide);
-    assert(matrixNElem >= 0);
+    int matrixNElem = ComputeMatrixNElem(guide);
     StoreMatrixOffsets(guide);
 
     /*
@@ -115,9 +59,9 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
             lnMatchPValueVect.resize(qSeq.length);
         }
         //
-        // Normalize probability vectors so that the probability of transition from each cell is 1.
+        // Normalize probability std::vectors so that the probability of transition from each cell is 1.
         //
-        unsigned int i;
+        int i;
         for (i = 0; i < qSeq.length; i++) {
             float subSum  = LogSumOfTwo(lnSubPValueVect[i], QVToLogPScale(scoreFn.substitutionPrior)); // prior on substitution rate
             float denominator = LogSumOfThree(lnDelPValueVect[i], lnInsPValueVect[i], subSum);
@@ -134,6 +78,17 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     // 
     // Make sure the alignments can fit in the reused buffers.
     //
+    std::vector<int>    affineInsScoreMat, affineDelScoreMat;
+    std::vector<Arrow>  affineInsPathMat, affineDelPathMat;
+    affineInsScoreMat.resize(matrixNElem);
+    fill(affineInsScoreMat.begin(), affineInsScoreMat.end(), 0);
+    affineDelScoreMat.resize(matrixNElem);
+    fill(affineDelScoreMat.begin(), affineDelScoreMat.end(), 0);
+    affineInsPathMat.resize(matrixNElem);
+    fill(affineInsPathMat.begin(), affineInsPathMat.end(), NoArrow);
+    affineDelPathMat.resize(matrixNElem);
+    fill(affineDelPathMat.begin(), affineDelPathMat.end(), NoArrow);
+
 
     if (scoreMat.size() < matrixNElem) {
         scoreMat.resize(matrixNElem);
@@ -180,7 +135,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     GetBufferIndexFunctor GetBufferIndex;
     GetBufferIndex.seqRowOffset = qStart;
     GetBufferIndex.guideSize    = guide.size();
-    int indicesAreValid, delIndexIsValid, insIndexIsValid;
+    int indicesAreValid, delIndexIsValid, insIndexIsValid, matchIndexIsValid;
     bufferIndex = -1;
     indicesAreValid = GetBufferIndex(guide, qStart-1, tStart-1, bufferIndex);
     assert(indicesAreValid);
@@ -198,15 +153,14 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
         curIndex=-1;
         indicesAreValid = GetBufferIndex(guide, qStart-1, t, curIndex);
         if (indicesAreValid == 0 ) {
-            std::cout << "QSeq" << std::endl;
-            ((DNASequence)origQSeq).PrintSeq(std::cout);
-            std::cout << "TSeq" << std::endl;
-            ((DNASequence)origTSeq).PrintSeq(std::cout);
+            cout << "QSeq" << endl;
+            ((DNASequence)origQSeq).PrintSeq(cout);
+            cout << "TSeq" << endl;
+            ((DNASequence)origTSeq).PrintSeq(cout);
             assert(0);
         }
         delIndex = -1;
         delIndexIsValid = GetBufferIndex(guide, qStart-1, t-1, delIndex);
-
         if (delIndexIsValid) {
             if (alignType == Global) {
                 scoreMat[curIndex] = scoreMat[delIndex] + scoreFn.del;
@@ -214,6 +168,10 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
             else if (alignType == Local) {
                 scoreMat[curIndex] = 0;
             }
+            affineDelScoreMat[curIndex] = scoreFn.del;
+            affineDelPathMat[curIndex] = AffineDelOpen;
+            affineInsPathMat[curIndex] = AffineInsOpen;
+            affineInsScoreMat[curIndex] = scoreFn.ins;
             pathMat[curIndex] = Left;
             if (computeProb) {
                 if (qSeq.qual.Empty() == false) {
@@ -242,16 +200,17 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
             else {
                 scoreMat[curIndex] = 0;
             }
+            affineInsScoreMat[curIndex] = scoreFn.ins;
+            affineInsPathMat[curIndex]  = AffineInsOpen;
+            affineDelScoreMat[curIndex] = scoreFn.del;
+            affineDelPathMat[curIndex] = AffineDelOpen;
             pathMat[curIndex] = Up;
-            if (computeProb) {
-                if (qSeq.qual.Empty() == false) {
-                    optPathProbMat[curIndex] = probMat[curIndex] = probMat[insIndex] + QVToLogPScale(scoreFn.Insertion(tSeq,(DNALength) 0, qSeq, (DNALength)q));
-                }
-            }
         }
     }
 
-    int matchScore, insScore, delScore;
+    int matchScore, insScore, delScore, 
+        affineInsOpenScore, affineInsExtScore, 
+        affineDelOpenScore, affineDelExtScore;
 
     for (q = qStart; q < qEnd; q++) {
         int qi = q - qStart + 1;
@@ -273,7 +232,6 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
         }    
 
         for (t = tp - guide[qi].tPre ; t < guide[qi].t + guide[qi].tPost +1; t++) {
-
 
             if (q < qStart + bandSize and t == tp - guide[qi].tPre - 1) {
                 // On the boundary condition, don't access the 1st element;
@@ -312,19 +270,23 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
             if (GetBufferIndex(guide, q-1, t, insIndex)) {
                 assert(insIndex >= 0);
                 insScore = scoreMat[insIndex] + scoreFn.Insertion(tSeq,(DNALength) t, qSeq, (DNALength)q);
+                affineInsExtScore = affineInsScoreMat[insIndex] + scoreFn.affineExtend; // 0 extension 
             }
             else {
                 insScore = INF_INT;
+                affineInsExtScore = INF_INT;
             }
             if (GetBufferIndex(guide, q, t-1, delIndex)) {
                 assert(delIndex >= 0);
                 delScore = scoreMat[delIndex] + scoreFn.Deletion(tSeq, (DNALength) t, qSeq, (DNALength)q);
+                affineDelExtScore = affineDelScoreMat[delIndex] + scoreFn.affineExtend;
             }
             else {
                 delScore = INF_INT;
+                affineDelExtScore = INF_INT;
             }
 
-            int minScore = MIN(matchScore, MIN(insScore, delScore));
+            int minScore = MIN(matchScore, MIN(insScore, MIN(delScore, MIN(affineInsExtScore, affineDelExtScore))));
             int result   = GetBufferIndex(guide, q, t, curIndex);
             // This should only loop over valid cells.
             assert(result);
@@ -332,10 +294,6 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
             scoreMat[curIndex] = minScore;
             if (minScore == INF_INT) {
                 pathMat[curIndex] = NoArrow;
-                if (computeProb) {
-                    probMat[curIndex] = 1;
-                    optPathProbMat[curIndex] = 0;
-                }
             }
             else {
                 assert(result == 1);
@@ -345,63 +303,44 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
                 else if (minScore == delScore) {
                     pathMat[curIndex] = Left;
                 }
-                else {
+                else if (minScore == insScore) {
                     pathMat[curIndex] = Up;
                 }
-
-                float pMisMatch, pIns, pDel;
-                // Assign these to anything over 1 to signal they are not assigned.
-                pMisMatch = 2;
-                pIns      = 2;
-                pDel      = 2;
-                if (computeProb) {
-                    if (matchScore != INF_INT) {
-                        pMisMatch = QVToLogPScale(scoreFn.NormalizedMatch(tSeq, t, qSeq, q));
-                    }
-                    if (insScore != INF_INT) {
-                        pIns = QVToLogPScale(scoreFn.NormalizedInsertion(tSeq, t, qSeq, q));
-                    }
-                    if (delScore != INF_INT) {
-                        pDel = QVToLogPScale(scoreFn.NormalizedDeletion(tSeq, t, qSeq, q));
-                    }
-
-                    if (qSeq.qual.Empty() == false) {
-                        if (matchScore != INF_INT and delScore != INF_INT and insScore != INF_INT) {
-                            probMat[curIndex] = LogSumOfThree(probMat[matchIndex] + pMisMatch,
-                                    probMat[delIndex] + pDel,
-                                    probMat[insIndex] + pIns);
-                        }
-                        else if (matchScore != INF_INT and delScore != INF_INT) {
-                            probMat[curIndex] = LogSumOfTwo(probMat[matchIndex] + pMisMatch,
-                                    probMat[delIndex] + pDel);
-                        }
-                        else if (matchScore != INF_INT and insScore != INF_INT) {
-                            probMat[curIndex] = LogSumOfTwo(probMat[matchIndex] + pMisMatch,
-                                    probMat[insIndex] + pIns);					
-                        }
-                        else if (insScore != INF_INT and delScore != INF_INT) {
-                            probMat[curIndex] = LogSumOfTwo(probMat[delIndex] + pDel,
-                                    probMat[insIndex] + pIns);
-                        }
-                        else if (matchScore != INF_INT) {
-                            probMat[curIndex] = probMat[matchIndex] + pMisMatch;
-                        }
-                        else if (delScore != INF_INT) {
-                            probMat[curIndex] = probMat[delIndex] + pDel;
-                        }
-                        else if (insScore != INF_INT) {
-                            probMat[curIndex] = probMat[insIndex] + pIns;
-                        }
-                        //
-                        // Not normalizing probabilities, but using value as if it
-                        // was a probability later on, so cap at 0 (= log 1).
-                        //
-                        if (probMat[curIndex] > 0) {
-                            probMat[curIndex] = 0;
-                        }
-                        assert(!std::isnan(probMat[curIndex]));
-                    }
+                else if (minScore == affineInsExtScore) {
+                    pathMat[curIndex] = AffineInsClose;
                 }
+                else {
+                    assert (minScore == affineDelExtScore) ;
+                    pathMat[curIndex] = AffineDelClose;
+                }
+            }
+
+            affineInsOpenScore = scoreMat[curIndex] + scoreFn.ins * 2;
+            affineDelOpenScore = scoreMat[curIndex] + scoreFn.del * 2;
+
+            if (affineInsOpenScore == INF_INT and 
+                    affineInsExtScore == INF_INT) {
+                cout << q << " " << t << endl;
+                cout << "All infinity, bad things will happen." << endl;
+                cout << "the score mat here is : " << scoreMat[curIndex] << " and path " << pathMat[curIndex] << endl;
+                assert(0);
+            }
+            if (affineInsOpenScore < affineInsExtScore) {
+                affineInsPathMat[curIndex] = AffineInsOpen;
+                affineInsScoreMat[curIndex] = affineInsOpenScore;
+            }
+            else {
+                affineInsPathMat[curIndex] = AffineInsUp;
+                affineInsScoreMat[curIndex] = affineInsExtScore;
+            }
+
+            if (affineDelOpenScore < affineDelExtScore) {
+                affineDelPathMat[curIndex] = AffineDelOpen;
+                affineDelScoreMat[curIndex] = affineDelOpenScore;
+            }
+            else {
+                affineDelPathMat[curIndex] = AffineDelLeft;
+                affineDelScoreMat[curIndex] = affineDelExtScore;
             }
         }
     }		
@@ -410,38 +349,85 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     t = tEnd-1;
     std::vector<Arrow>  optAlignment;
     int bufferIndexIsValid;
+    int curMatrix = Match;
     while(q >= qStart or t >= tStart) {
         bufferIndex = -1;
+        //    cout << "backtrace: " << q << " "<< t << endl;
         bufferIndexIsValid = GetBufferIndex(guide, q, t, bufferIndex);
         assert(bufferIndexIsValid);
         assert(bufferIndex >= 0);
         Arrow arrow;
-        arrow = pathMat[bufferIndex];
-        if (arrow == NoArrow) {
-            tSeq.ToAscii();
-            qSeq.ToAscii();
-            unsigned int gi;
-            for (gi = 0; gi < guide.size(); gi++) {
-                std::cout << guide[gi].q << " " << guide[gi].t << " " << guide[gi].tPre << " " << guide[gi].tPost << std::endl;
+        //    cout << q << " "<< t << " " << curMatrix << " " << arrow << endl;
+        if (curMatrix == Match) {
+            arrow = pathMat[bufferIndex];
+            if (arrow == NoArrow) {
+                tSeq.ToAscii();
+                qSeq.ToAscii();
+                int gi;
+                for (gi = 0; gi < guide.size(); gi++) {
+                    cout << guide[gi].q << " " << guide[gi].t << " " << guide[gi].tPre << " " << guide[gi].tPost << endl;
+                }
+
+                cout << "qseq: "<< endl;
+                ((DNASequence)qSeq).PrintSeq(cout);
+                cout << "tseq: "<< endl;
+                ((DNASequence)tSeq).PrintSeq(cout);
+                cout << "ERROR, this path has gone awry at " << q << " " << t << " !" << endl;
+                exit(1);
             }
 
-            std::cout << "qseq: "<< std::endl;
-            ((DNASequence)qSeq).PrintSeq(std::cout);
-            std::cout << "tseq: "<< std::endl;
-            ((DNASequence)tSeq).PrintSeq(std::cout);
-            std::cout << "ERROR, this path has gone awry at " << q << " " << t << " !" << std::endl;
-            exit(1);
+            if (arrow == Diagonal) {
+                optAlignment.push_back(arrow);
+                q--;
+                t--;
+            }
+            else if (arrow == Up) {
+                optAlignment.push_back(arrow);
+                q--;
+            }
+            else if (arrow == Left) {
+                optAlignment.push_back(arrow);
+                t--;
+            }
+            else if (arrow == AffineInsClose) {
+                optAlignment.push_back(Up);
+                curMatrix = AffineIns;
+                q--;
+            }
+            else if (arrow == AffineDelClose) {
+                t--;
+                optAlignment.push_back(Left);
+                curMatrix = AffineDel;
+            }
         }
-        optAlignment.push_back(arrow);
-        if (arrow == Diagonal) {
-            q--;
-            t--;
+        else if (curMatrix == AffineIns) {
+            arrow = affineInsPathMat[bufferIndex];
+            if (arrow == AffineInsOpen) {
+                curMatrix = Match;
+            }
+            else if (arrow == AffineInsUp) {
+                q--;
+                optAlignment.push_back(Up);
+            }
+            else {
+                cout << "ERROR!  Reached arrow " << arrow << " at " << q << " " << t << " in affine ins path mat. That is bad." << endl;
+                assert(0);
+            }
         }
-        else if (arrow == Up) {
-            q--;
-        }
-        else if (arrow == Left) {
-            t--;
+        else {
+            assert(curMatrix == AffineDel);
+            arrow = affineDelPathMat[bufferIndex];
+            if (arrow == AffineDelOpen) {
+                curMatrix = Match;
+            }
+            else if (arrow == AffineDelLeft) {
+                t--;
+                optAlignment.push_back(Left);
+            }
+            else {
+                cout << "ERROR! Reached arrow " << arrow << " at " << q << " " << t << " in affine del mat. This is also bad." << endl;
+                assert(0);
+            }
         }
     }
 
@@ -450,6 +436,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     alignment.qPos = qStart;
     alignment.tPos = tStart;
     alignment.ArrowPathToAlignment(optAlignment);
+    //  StickPrintAlignment(alignment, qSeq, tSeq, cout);
     RemoveAlignmentPrefixGaps(alignment);
     int lastIndex = 0;
     tSeq.Free();
@@ -457,9 +444,6 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     lastIndex = -1;
     if (GetBufferIndex(guide, qEnd - 1, tEnd - 1, lastIndex)) {
         alignment.score = scoreMat[lastIndex];
-        if (computeProb) {
-            alignment.probScore = probMat[lastIndex];
-        }
         return scoreMat[lastIndex];
     }
     else {
@@ -467,16 +451,17 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     }
 }
 
+
 template<typename QSequence, typename TSequence, typename T_ScoreFn> //, typename T_BufferCache>
-int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,
+int AffineGuidedAlign(QSequence &origQSeq, TSequence &origTSeq,
         T_ScoreFn &scoreFn,
         int bandSize,
         int sdpIns, int sdpDel, float sdpIndelRate,
-        blasr::Alignment &alignment,
+        Alignment &alignment,
         AlignmentType alignType=Global,
         bool computeProb = false,
         int sdpTupleSize= 8) {
-    blasr::Alignment sdpAlignment;
+    Alignment sdpAlignment;
 
     int alignScore = SDPAlign(origQSeq, origTSeq,
             scoreFn, sdpTupleSize, 
@@ -491,7 +476,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,
     sdpAlignment.tPos = 0;
     sdpAlignment.qPos = 0;
 
-    return GuidedAlign(origQSeq, origTSeq, sdpAlignment, scoreFn, bandSize, alignment,
+    return AffineGuidedAlign(origQSeq, origTSeq, sdpAlignment, scoreFn, bandSize, alignment,
             // fill in optional parameters
             alignType, computeProb);
 
@@ -504,17 +489,17 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,
 //
 
 template<typename QSequence, typename TSequence, typename T_ScoreFn, typename T_BufferCache>
-int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq, 
+int AffineGuidedAlign(QSequence &origQSeq, TSequence &origTSeq, 
         T_ScoreFn &scoreFn,
         int bandSize,
         int sdpIns, int sdpDel, float sdpIndelRate,
         T_BufferCache &buffers,
-        blasr::Alignment &alignment, 
+        Alignment &alignment, 
         AlignmentType alignType=Global,
         bool computeProb = false,
         int sdpTupleSize= 8) {
 
-    blasr::Alignment sdpAlignment;
+    Alignment sdpAlignment;
 
     int alignScore = SDPAlign(origQSeq, origTSeq,
             scoreFn, sdpTupleSize, 
@@ -529,7 +514,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,
     sdpAlignment.tPos = 0;
     sdpAlignment.qPos = 0;
 
-    return GuidedAlign(origQSeq, origTSeq, sdpAlignment, scoreFn, bandSize, buffers, alignment,
+    return AffineGuidedAlign(origQSeq, origTSeq, sdpAlignment, scoreFn, bandSize, buffers, alignment,
             // fill in optional parameters
             alignType, computeProb);
 }
@@ -538,14 +523,14 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,
 // Use case, guide exists, using buffers
 //
 template<typename QSequence, typename TSequence, typename T_ScoreFn, typename T_BufferCache>
-int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &guideAlignment,
+int AffineGuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  Alignment &guideAlignment,
         T_ScoreFn &scoreFn,
         int bandSize,
         T_BufferCache &buffers,
-        blasr::Alignment &alignment, 
+        Alignment &alignment, 
         AlignmentType alignType=Global, 
         bool computeProb=false) {
-    return GuidedAlign(origQSeq, origTSeq, guideAlignment, scoreFn, bandSize, alignment, 
+    return AffineGuidedAlign(origQSeq, origTSeq, guideAlignment, scoreFn, bandSize, alignment, 
             buffers.scoreMat,
             buffers.pathMat,
             buffers.probMat,
@@ -567,10 +552,10 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
 // Use case, guide exists, but not using buffers.                   
 //
 template<typename QSequence, typename TSequence, typename T_ScoreFn>
-int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &guideAlignment,
+int AffineGuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  Alignment &guideAlignment,
         T_ScoreFn &scoreFn,
         int bandSize,
-        blasr::Alignment &alignment, 
+        Alignment &alignment, 
         AlignmentType alignType=Global, 
         bool computeProb=false) {
 
@@ -584,7 +569,7 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
     std::vector<float>  lnDelPValueVect;
     std::vector<float>  lnMatchPValueVect;
 
-    return GuidedAlign(origQSeq, origTSeq, guideAlignment, scoreFn, bandSize, alignment,
+    return AffineGuidedAlign(origQSeq, origTSeq, guideAlignment, scoreFn, bandSize, alignment,
             scoreMat,
             pathMat,
             probMat,
@@ -595,4 +580,4 @@ int GuidedAlign(QSequence &origQSeq, TSequence &origTSeq,  blasr::Alignment &gui
             lnMatchPValueVect, alignType, computeProb);
 }
 
-#endif // _BLASR_GUIDE_ALIGNMENT_HPP_
+#endif // _BLASR_AFFINE_GUIDE_ALIGNMENT_HPP_

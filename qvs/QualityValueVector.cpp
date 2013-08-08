@@ -1,10 +1,3 @@
-#include <stdint.h>
-#include <cstddef>
-#include <ostream>
-#include "Types.h"
-#include "utils.hpp"
-#include "DNASequence.hpp"
-#include "QualityValue.hpp"
 #include "QualityValueVector.hpp"
 
 template<typename T_QV>
@@ -41,7 +34,7 @@ void QualityValueVector<T_QV>::Copy(const QualityValueVector<T_QV> &rhs, const D
         return;
     }
     Allocate(length);
-    memcpy(data, rhs.data, length * sizeof(T_QV));
+    std::memcpy(data, rhs.data, length * sizeof(T_QV));
 }
 
 template<typename T_QV>
@@ -67,3 +60,5 @@ void QualityValueVector<T_QV>::ShallowCopy(const QualityValueVector<T_QV> &ref, 
     data = &ref.data[pos];
     qvScale = ref.qvScale;
 }
+
+template class QualityValueVector<QualityValue>;

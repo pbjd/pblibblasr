@@ -1,5 +1,13 @@
 #ifndef _BLASR_QUALITY_VALUE_VECTOR_HPP_
 #define _BLASR_QUALITY_VALUE_VECTOR_HPP_
+#include <stdint.h>
+#include <cstddef>
+#include <ostream>
+#include <cstring>
+#include "Types.h"
+#include "utils.hpp"
+#include "DNASequence.hpp"
+#include "QualityValue.hpp"
 
 template<typename T_QV>
 class QualityValueVector {
@@ -26,5 +34,7 @@ public:
     void ShallowCopy(const QualityValueVector<T_QV> &ref, int pos = 0); 
 
 };
+
+
 
 #endif // _BLASR_QUALITY_VALUE_VECTOR_HPP_

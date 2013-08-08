@@ -454,7 +454,8 @@ void RemoveAlignmentPrefixGaps(T_Alignment &alignment) {
     if (alignment.gaps.size()  == 0) {
         return;
     }
-    int g;
+
+    unsigned int g;
     int tStart = 0, qStart = 0;
     for (g = 0; g < alignment.gaps[0].size(); g++) {
         if (alignment.gaps[0][g].seq == Gap::Target) {

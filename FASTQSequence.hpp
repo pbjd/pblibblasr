@@ -1,6 +1,8 @@
 #ifndef _BLASR_FASTQ_SEQUENCE_HPP_
 #define _BLASR_FASTQ_SEQUENCE_HPP_
 
+#include "DNASequence.hpp"
+#include "FASTASequence.hpp"
 #include "qvs/QualityValue.hpp"
 #include "qvs/QualityValueVector.hpp"
 #include "datastructures/matrix/Matrix.hpp"
