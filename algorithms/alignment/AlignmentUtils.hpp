@@ -67,7 +67,7 @@ int ComputeAlignmentScore(blasr::Alignment &alignment,
         int ins,
         int del);
 
-inline int GetNumberWidth(unsigned int value); 
+int GetNumberWidth(unsigned int value); 
 
 template<typename T_Alignment>
 inline void PrintCompareSequencesAlignmentStats(T_Alignment &alignment, std::ostream &out); 

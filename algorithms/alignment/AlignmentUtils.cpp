@@ -47,7 +47,7 @@ int ComputeAlignmentScore(
     return score;
 }
 
-inline int GetNumberWidth(unsigned int value) {
+int GetNumberWidth(unsigned int value) {
     // 0 has a width of 1.
     int width = 1;
     while (value / 10 > 0)  {

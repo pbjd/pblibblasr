@@ -1,6 +1,17 @@
 #ifndef _BLASR_FASTA_SEQUENCE_HPP_
 #define _BLASR_FASTA_SEQUENCE_HPP_
 
+#include <string>
+#include <iostream>
+#include <stdint.h>
+#include <string>
+#include <cstring>
+#include <ostream>
+#include "Types.h"
+#include "NucConversion.hpp"
+#include "Enumerations.h"
+#include "PlatformId.h"
+#include "DNASequence.hpp"
 #include "datastructures/reads/ZMWGroupEntry.hpp"
 
 //
