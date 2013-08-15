@@ -1,4 +1,5 @@
 #include <vector>
+#include <algorithm>
 #include "PulseBaseCommon.hpp"
 
 float PulseBaseCommon::GetFrameRate() {
