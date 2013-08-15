@@ -2,6 +2,7 @@
 #define _BLASR_FASTA_READER_HPP_
 #include <stdint.h>
 #include <string>
+#include "FASTASequence.hpp"
 #include "datastructures/metagenome/SequenceIndexDatabase.h"
 
 class FASTAReader {

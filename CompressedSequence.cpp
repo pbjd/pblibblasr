@@ -1,19 +1,3 @@
-#include <cassert>
-#include <stdint.h>
-#include <iostream>
-#include <fstream>
-#include <ostream>
-#include <cstring>
-#include "utils.hpp"
-#include "Types.h"
-#include "PlatformId.h"
-#include "Enumerations.h"
-#include "NucConversion.hpp"
-#include "DNASequence.hpp"
-#include "ReverseCompressIndex.hpp"
-#include "qvs/QualityValue.hpp"
-#include "datastructures/reads/ZMWGroupEntry.hpp"
-#include "FASTASequence.hpp"
 #include "CompressedSequence.hpp"
 
 template<typename T_Sequence>
