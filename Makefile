@@ -1,4 +1,3 @@
-LEGACY := -I../../../../assembly/cpp/common
 CXXOPTS := -I . -pedantic -c -fmessage-length=0 -MMD -MP
 
 sources := $(wildcard algorithms/alignment/*.cpp) \
@@ -27,7 +26,7 @@ libblasr.a: libblasr.a($(objects))
 	$(AR) $(ARFLAGS)s $@ $%
 
 %.o: %.cpp
-	$(CXX) $(GCCOPTS) $(CXXOPTS) $(LEGACY) -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.o) $(@:%.o=%.d)" -o $@ $<
+	$(CXX) $(GCCOPTS) $(CXXOPTS) -MF"$(@:%.o=%.d)" -MT"$(@:%.o=%.o) $(@:%.o=%.d)" -o $@ $<
 
 .INTERMEDIATE: $(objects)
 
